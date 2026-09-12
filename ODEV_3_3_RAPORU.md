@@ -77,6 +77,8 @@ WHERE status = 'cancelled';
 | **`WHERE status IS NOT NULL`** | Çok Düşük (%100 eşleşme) | Sequential Scan | Tablonun tamamını okumak indeks maliyetinden daha ucuzdur. |
 | **`WHERE status = 'cancelled'`** | Yüksek (Dar / Nadir veri) | Index Scan | Sadece ilgili satırlara doğrudan erişmek daha verimlidir. |
 
+**Hızlanma Oranı:** Yaklaşık **1.55 kat** performans artışı sağlanmıştır. 
+
 ## Senaryo 3: OR Operatörü Kullanımı Nedeniyle İndekslerin Etkisiz Kalması
 
 ### Problem Tanımı
