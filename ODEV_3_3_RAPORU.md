@@ -47,7 +47,7 @@ WHERE created_at >= '2025-01-01 00:00:00'
 ### Problem Tanımı
 Tablodaki kayıtların neredeyse tamamı filtrelenen koşulu sağlıyorsa (düşük seçicilik), veritabanı maliyet optimizatörü indeks üzerinden satır aramanın (Random I/O) tablonun tamamını baştan sona taramaktan (Sequential Scan) daha maliyetli olduğunu hesaplar. Bu durumda indeks mevcut olsa bile PostgreSQL onu bilinçli olarak baypas eder ve **Sequential Scan** tercih eder.
 
-### 1. Kötü Sorgu ve Plan
+### 1. Öncesi (Kötü Sorgu ve Plan)
 - **Sorgu:**
 ```sql
 SELECT id, status, total_amount
