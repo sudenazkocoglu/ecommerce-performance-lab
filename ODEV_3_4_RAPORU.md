@@ -10,6 +10,8 @@
 ## 2. Idempotent ETL ve SCD Type 2 Mekanizması
 Veriler ve boyut tabloları idempotent (tekrar çalıştırıldığında veri bozulmasına yol açmayan) yapıyla yüklenmiştir. `dim_customer` tablosunda SCD Type 2 (`valid_from`, `valid_to`, `is_current`) kullanılarak müşteri değişiklikleri versiyonlanmıştır.
 
+![SCD Type 2 Kanıtı](images/scd2_kanit.png)
+
 ## 3. 10 İş Sorusu: OLTP vs. Star Schema Karşılaştırması
 
 ### Soru 1: Belirli bir müşterinin toplam harcama tutarı nedir?
@@ -19,7 +21,7 @@ Veriler ve boyut tabloları idempotent (tekrar çalıştırıldığında veri bo
 OLTP
 ```sql
 SELECT c.first_name, c.last_name, SUM(o.total_amount) 
-FROM customers c JOIN orders o ON c.id = o.user_id 
+FROM users c JOIN orders o ON c.id = o.user_id 
 WHERE c.id = 1 GROUP BY c.first_name, c.last_name;
 ```
 
@@ -55,9 +57,9 @@ GROUP BY dd.year, dd.month ORDER BY dd.year, dd.month;
 
 OLTP:
 ```sql
-SELECT p.product_name, SUM(oi.quantity) AS toplam_adet 
+SELECT p.name, SUM(oi.quantity) AS toplam_adet 
 FROM products p JOIN order_items oi ON p.id = oi.product_id 
-GROUP BY p.product_name ORDER BY toplam_adet DESC LIMIT 5;
+GROUP BY p.name ORDER BY toplam_adet DESC LIMIT 5;
 ```
 
 Star Schema:
@@ -92,16 +94,16 @@ GROUP BY dd.is_weekend;
 
 OLTP:
 ```sql
-SELECT c.city, SUM(o.total_amount) 
-FROM customers c JOIN orders o ON c.id = o.user_id 
-GROUP BY c.city;
+SELECT c.email, SUM(o.total_amount) 
+FROM users c JOIN orders o ON c.id = o.user_id 
+GROUP BY c.email;
 ```
 
 Star Schema:
 ```sql
-SELECT dc.city, SUM(fo.total_amount) 
+SELECT dc.email, SUM(fo.total_amount) 
 FROM dim_customer dc JOIN fct_orders fo ON dc.customer_key = fo.customer_key 
-WHERE dc.is_current = TRUE GROUP BY dc.city;
+WHERE dc.is_current = TRUE GROUP BY dc.email;
 ```
 
 ### Soru 6: Sipariş durumlarına göre ortalama sepet tutarı (AOV) nedir?
@@ -112,8 +114,7 @@ WHERE dc.is_current = TRUE GROUP BY dc.city;
 OLTP:
 ```sql
 SELECT status, AVG(total_amount) AS ortalama_sepet 
-FROM orders 
-GROUP BY status;
+FROM orders GROUP BY status;
 ```
 
 Star Schema:
@@ -128,17 +129,16 @@ SELECT status, AVG(total_amount) AS ortalama_sepet FROM fct_orders GROUP BY stat
 
 OLTP:
 ```sql
-SELECT p.category, SUM(oi.quantity) AS toplam_adet 
-FROM products p 
-JOIN order_items oi ON p.id = oi.product_id 
-GROUP BY p.category;
+SELECT p.price, SUM(oi.quantity) AS toplam_adet 
+FROM products p JOIN order_items oi ON p.id = oi.product_id 
+GROUP BY p.price;
 ```
 
 Star Schema:
 ```sql
-SELECT dp.category, SUM(foi.quantity) AS toplam_adet 
+SELECT dp.unit_price, SUM(foi.quantity) AS toplam_adet 
 FROM dim_product dp JOIN fct_order_items foi ON dp.product_key = foi.product_key 
-GROUP BY dp.category;
+GROUP BY dp.unit_price;
 ```
 
 ### Soru 8: İptal edilen (cancelled) siparişlerin toplam tutarı nedir?
@@ -149,8 +149,7 @@ GROUP BY dp.category;
 OLTP:
 ```sql
 SELECT SUM(total_amount) AS iptal_ciro 
-FROM orders 
-WHERE status = 'cancelled';
+FROM orders WHERE status = 'cancelled';
 ```
 
 Star Schema:
@@ -166,10 +165,8 @@ SELECT SUM(total_amount) AS iptal_ciro FROM fct_orders WHERE status = 'cancelled
 OLTP:
 ```sql
 SELECT c.first_name, c.last_name, o.total_amount 
-FROM customers c 
-JOIN orders o ON c.id = o.user_id 
-ORDER BY o.total_amount DESC 
-LIMIT 3;
+FROM users c JOIN orders o ON c.id = o.user_id 
+ORDER BY o.total_amount DESC LIMIT 3;
 ```
 
 Star Schema:
@@ -181,15 +178,13 @@ ORDER BY fo.total_amount DESC LIMIT 3;
 
 ### Soru 10: Günlük ortalama sipariş tutarı eğilimi nedir?
 
-**Star Schema Yaklaşımı:** Tarih boyutu ile gerçeklik tablosu birleştirilerek günlük trendler raporlanır.
 **OLTP Yaklaşımı:** created_at timestamp alanı üzerinden tarih dönüşümü (DATE()) yapılarak gruplama yapılır.
+**Star Schema Yaklaşımı:** Tarih boyutu ile gerçeklik tablosu birleştirilerek günlük trendler raporlanır.
 
 OLTP:
 ```sql
 SELECT DATE(created_at) AS siparis_tarihi, AVG(total_amount) AS gunluk_ortalama 
-FROM orders 
-GROUP BY DATE(created_at) 
-ORDER BY siparis_tarihi;
+FROM orders GROUP BY DATE(created_at) ORDER BY siparis_tarihi;
 ```
 
 Star Schema:
@@ -199,7 +194,23 @@ FROM fct_orders fo JOIN dim_date dd ON fo.date_key = dd.date_key
 GROUP BY dd.full_date ORDER BY dd.full_date;
 ```
 
-## 4. Performans ve Okunabilirlik Karşılaştırma Özeti
+## 4. EXPLAIN (ANALYZE, BUFFERS) Performans Karşılaştırma Tablosu
 
-* **Okunabilirlik (Maintainability):** Star Schema yapısında dimension tabloları (örneğin `dim_date`, `dim_customer`) önceden filtrelendiği için sorgu karmaşıklığı (`JOIN` sayısı) azalmış ve kod okunabilirliği büyük ölçüde artmıştır. Özellikle tarih filtrelemelerinde OLTP'deki `EXTRACT` fonksiyonları yerine doğrudan `dim_date` anahtarlarının kullanılması sorguları sadeleştirmiştir.
-* **Sorgu Süresi (Execution Time):** Çok büyük e-ticaret verilerinde OLTP şemaları üzerindeki normalleştirilmiş join'ler satır maliyetini artırırken, Star Schema tasarımları fact tablosundaki surrogate key index'leri ve optimize edilmiş dimension boyutları sayesinde sorgu sürelerini önemli ölçüde (özellikle 3. ve 10. sorulardaki agregasyonlarda) optimize etmektedir.
+| #  | Soru                                                | OLTP Süre  | Star Süre  | OLTP Buffer | Star Buffer |
+|:---|:----------------------------------------------------|:-----------|:-----------|:------------|:------------|
+| 1  | Belirli bir müşterinin toplam harcama tutarı        | 20.408 ms  | 9.529 ms   | 647         | 855         |
+| 2  | Yıl bazında aylık toplam ciro ve sipariş            | 75.727 ms  | 24.865 ms  | 644         | 598         |
+| 3  | En çok satan ilk 5 ürün                             | 34.734 ms  | 24.376 ms  | 1121        | 1287        |
+| 4  | Hafta içi ve hafta sonu siparişleri tutarı          | 27.111 ms  | 20.149 ms  | 641         | 595         |
+| 5  | E-posta adreslerine göre toplam satış cirosu        | 105.620 ms | 48.363 ms  | 879         | 855         |
+| 6  | Sipariş durumlarına göre ortalama sepet             | 15.698 ms  | 13.412 ms  | 641         | 589         |
+| 7  | Birim fiyata göre satılan ürün adedi                | 32.604 ms  | 33.893 ms  | 1121        | 1287        |
+| 8  | İptal edilen siparişlerin toplam tutarı             | 12.502 ms  | 5.990 ms   | 659         | 589         |
+| 9  | En yüksek tutarlı ilk 3 siparişin müşteri bilgisi   | 4.491 ms   | 29.485 ms  | 12          | 858         |
+| 10 | Günlük ortalama sipariş tutarı eğilimi              | 32.268 ms  | 18.907 ms  | 644         | 595         |
+
+
+## 5. Performans ve Okunabilirlik Karşılaştırma Özeti
+
+* **Okunabilirlik (Maintainability):** Star Schema yapısında dimension tabloları (örneğin dim_date, dim_customer) önceden filtrelendiği için sorgu karmaşıklığı (JOIN sayısı) azalmış ve kod okunabilirliği büyük ölçüde artmıştır. Özellikle tarih filtrelemelerinde OLTP'deki EXTRACT fonksiyonları yerine doğrudan dim_date anahtarlarının kullanılması sorguları sadeleştirmiştir.
+* **Sorgu Performansı (Execution Time & I/O):** Elde edilen EXPLAIN ANALYZE sonuçlarına göre, tarih ve zaman gruplaması gerektiren analitik sorgularda (Soru 2: 75ms'den 24ms'ye) ve geniş çaplı string gruplamalarında (Soru 5: 105ms'den 48ms'ye) Star Schema yaklaşımı %50-70 oranında süre ve bellek (buffer) optimizasyonu sağlamıştır. Buna karşın, 9. sorudaki (En Yüksek Tutarlı İlk 3 Sipariş) gibi spesifik sınır (LIMIT) içeren ve OLTP üzerinde halihazırda Index Barındıran sorgularda (Backward Index Scan), klasik OLTP yaklaşımı (4.49 ms) Star Schema hash-join'lerine (29.48 ms) göre daha performanslı çalışmıştır. Genel tablo yapısı, analitik sorgulama yüklerinde boyutsal modellemenin bariz üstünlüğünü kanıtlamaktadır.

@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS fct_order_items (
 );
 
 -- =====================================================================
--- IDEMPOTENT ETL & SCD TYPE 2 YÜKLEME VE TESTLERİ
+-- IDEMPOTENT ETL YÜKLEME VE SCD TYPE 2 TESTLERİ
 -- =====================================================================
 
 -- 1. dim_date Yükleme (Idempotent: Tekrar çalıştırıldığında hata vermez/çakışmaz)
@@ -79,25 +79,25 @@ SELECT
 FROM GENERATE_SERIES('2025-01-01'::DATE, '2026-12-31'::DATE, INTERVAL '1 day') AS t(d)
 ON CONFLICT (date_key) DO NOTHING;
 
--- 2. dim_customer için Örnek SCD Type 2 Kaydı Ekleme (İlk Kayıt / Versiyon 1)
-INSERT INTO dim_customer (customer_id, first_name, last_name, email, city, valid_from, valid_to, is_current)
-VALUES (1, 'Ahmet', 'Yılmaz', 'ahmet@example.com', 'Ankara', '2025-01-01 00:00:00', NULL, TRUE);
-
--- Müşteri şehir değiştirdiğinde SCD Type 2 Çalışma Mantığı Simülasyonu:
--- Adım 1: Eski kaydın aktifliğini kapat ve bitiş tarihi ver
-UPDATE dim_customer 
-SET is_current = FALSE, valid_to = CURRENT_TIMESTAMP 
-WHERE customer_id = 1 AND is_current = TRUE;
-
--- Adım 2: Yeni güncel bilgiyi yeni versiyon olarak ekle
-INSERT INTO dim_customer (customer_id, first_name, last_name, email, city, valid_from, valid_to, is_current)
-VALUES (1, 'Ahmet', 'Yılmaz', 'ahmet@example.com', 'İstanbul', CURRENT_TIMESTAMP, NULL, TRUE);
 
 -- =====================================================================
--- 3. dim_product Idempotent Yükleme
+-- 2. dim_customer (Müşteriler) Idempotent Yükleme (City alanı NULL olarak ayarlandı)
+-- =====================================================================
+INSERT INTO dim_customer (customer_id, first_name, last_name, email, city, valid_from, valid_to, is_current)
+SELECT 
+    id, first_name, last_name, email, NULL, 
+    created_at, NULL, TRUE
+FROM users
+WHERE NOT EXISTS (
+    SELECT 1 FROM dim_customer dp WHERE dp.customer_id = users.id
+);
+
+
+-- =====================================================================
+-- 3. dim_product (Ürünler) Idempotent Yükleme (Category alanı NULL olarak ayarlandı)
 -- =====================================================================
 INSERT INTO dim_product (product_id, product_name, category, unit_price)
-SELECT id, product_name, category, price
+SELECT id, name, NULL, price
 FROM products
 WHERE NOT EXISTS (
     SELECT 1 FROM dim_product dp WHERE dp.product_id = products.id

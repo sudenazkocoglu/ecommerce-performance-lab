@@ -51,12 +51,17 @@
 
 ---
 
-## 3. Bellek ve Süre Karşılaştırma Matrisi (Performans Ölçüm Sonuçları)
+### 📊 Bellek ve Performans Karşılaştırması (Gerçek OS-Level RSS Ölçümü)
 
-| Metrik | DuckDB | Pandas | Mimari Avantajı / Fark |
+*Not: Önceki ölçümlerde kullanılan `tracemalloc` aracı yalnızca saf Python objelerini takip edip C/C++ motorlarının tahsislerini kaçırdığı için, bu yeni testte işletim sistemi seviyesindeki gerçek RAM tüketimini ölçen `psutil.Process().memory_info().peak_wset` (Peak RSS) metodu kullanılmış ve her iki motor birbirini kirletmemesi adına izole süreçlerde (ayrı ayrı) çalıştırılmıştır.*
+
+| Metrik | DuckDB (Out-of-Core) | Pandas (In-Memory) | Fark |
 | :--- | :--- | :--- | :--- |
-| **Çalışma Süresi** | **11.81 saniye** | **22.34 saniye** | DuckDB, Pandas'a göre yaklaşık **2 kat daha hızlı** çalıştı. |
-| **Zirve Bellek (RAM)** | **0.31 MB** | **95.11 MB** | DuckDB, diske/dosyaya doğrudan akışlı (streaming) eriştiği için RAM'i neredeyse hiç tüketmedi; Pandas ise tüm veri yapısını belleğe kopyaladı. |
+| **İşlem Süresi** | 20.14 saniye | 48.90 saniye | DuckDB ~2.4x daha hızlı |
+| **Zirve Bellek (OS RSS)** | 149.84 MB | 1123.50 MB | DuckDB ~7.5x daha az RAM |
+
+**Sonuç ve Analiz:**
+İşletim sistemi düzeyindeki gerçek bellek ölçümleri, iki aracın mimari farkını net bir şekilde ortaya koymaktadır. Pandas, veriyi işleyebilmek için dosyanın tamamını ve oluşturduğu ara objeleri devasa bir blok olarak RAM'e yüklediği için bellek tüketimi 1.1 GB'ın üzerine çıkmıştır. Buna karşın DuckDB, veriyi disk üzerinden vektörel olarak ve bloklar halinde okuyan (out-of-core) optimize bir C++ motoruna sahip olduğundan, aynı işi sadece ~150 MB gerçek bellek harcayarak ve 2.4 kat daha hızlı tamamlamıştır.
 
 ## 4. Sonuç ve Değerlendirme
 Büyük veri dosyalarında (Parquet, CSV vb.) sunucu kurmadan hızlı analitik sorgular çalıştırmak gerektiğinde **DuckDB**, sunduğu vektörize sorgulama ve düşük bellek ayak izi sayesinde geleneksel Pandas tabanlı in-memory yaklaşımlara kıyasla çok daha üstün performans ve ölçeklenebilirlik sunmaktadır.

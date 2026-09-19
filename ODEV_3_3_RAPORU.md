@@ -12,35 +12,35 @@ Bu rapor, PostgreSQL veritabanı üzerinde kasten yavaş yazılmış sorguların
 ### 1. Öncesi (Kötü Sorgu ve Plan)
 - **Sorgu:**
 ```sql
-SELECT id, user_id, total_amount, created_at
-FROM orders
-WHERE EXTRACT(YEAR FROM created_at) = 2025;
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM orders
+WHERE EXTRACT(YEAR FROM created_at) = 2026;
 ```
 - **Execution Plan Görüntüsü:**
-![Senaryo 1 Öncesi](images/senaryo1_once.png)
+![Senaryo 1 Öncesi](images/senaryo1_onceyeni.png)
 
 ### 2. Sonrası (İyileştirilmiş Sorgu ve İndeks)
 Sorgu, fonksiyon kullanılmadan aralık koşuluyla yeniden yazılmış ve kolon üzerine indeks eklenmiştir.
 - **Sorgu:**
 ```sql
-CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
-
-SELECT id, user_id, total_amount, created_at
-FROM orders
-WHERE created_at >= '2025-01-01 00:00:00' 
-  AND created_at < '2026-01-01 00:00:00'
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT * FROM orders
+WHERE created_at >= '2026-01-01' AND created_at < '2027-01-01';
 ```
 - **Execution Plan Görüntüsü:**
-![Senaryo 1 Sonrası](images/senaryo1_sonra.png)
+![Senaryo 1 Sonrası](images/senaryo1_sonrayeni.png)
 
 ### Performans Karşılaştırma Tablosu
 
-| Durum | Plan Türü (Scan Type) | Çalışma Süresi (Execution Time) |
-| :--- | :--- | :--- |
-| **Öncesi (Fonksiyon Kullanımı)** | Sequential Scan | 45.420 ms |
-| **Sonrası (Aralık Filtresi + İndeks)** | Index Scan | 0.053 ms |
+| Durum | Plan Türü (Scan Type) | Süre (Execution Time) | Buffer (Fiziksel Okuma) | Dönen Satır |
+| :--- | :--- | :--- | :--- | :--- |
+| **Öncesi (Fonksiyon Kullanımı)** | Sequential Scan | ~13.599 ms | shared hit=641 | 80.000 |
+| **Sonrası (Aralık Filtresi)** | Sequential Scan | ~7.867 ms | shared hit=641 | 80.000 |
 
-**Hızlanma Oranı:** Yaklaşık **850 kat** performans artışı sağlanmıştır. 
+**Sonuç ve Analiz (Düşük Seçicilik / Low Selectivity):**
+Sorgu fonksiyon kullanımından arındırılıp SARGable (indeks dostu) formata getirilmiş olmasına rağmen plan türü `Index Scan`'e dönüşmemiştir. Bunun temel sebebi **Düşük Seçicilik (Low Selectivity)** prensibidir. Tablodaki 80.000 kaydın tamamı 2026 yılına ait olduğu için (verinin %100'ü dönüyor), PostgreSQL planlayıcısı devasa veri kümesi için indeks kullanmanın ekstra I/O maliyeti yaratacağını hesaplamış ve bilinçli olarak **Sequential Scan** (sıralı tarama) yapmayı tercih etmiştir. 
+
+Her iki planın da diskten/bellekten tam olarak **641 buffer (sayfa)** okuması, yapılan fiziksel I/O iş yükünün birebir aynı kaldığını kanıtlamaktadır. Aradaki ufak süre farkı I/O kazancından değil, `EXTRACT` fonksiyonunun işlemcide (CPU) yarattığı ekstra hesaplama yükünün ortadan kalkmasından ibarettir. Bu senaryo, indeksin işe yaramadığı durumlara (tablonun çok büyük bir kısmı okunduğunda) dair net bir kanıttır.
 
 ## Senaryo 2: Düşük Seçicilik (Low Selectivity) Nedeniyle İndeksin Kullanılmaması
 
