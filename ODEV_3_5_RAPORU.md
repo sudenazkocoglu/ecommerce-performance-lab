@@ -60,7 +60,7 @@
 | **İşlem Süresi** | 20.14 saniye | 48.90 saniye | DuckDB ~2.4x daha hızlı |
 | **Zirve Bellek (OS RSS)** | 149.84 MB | 1123.50 MB | DuckDB ~7.5x daha az RAM |
 
-**Sonuç ve Analiz:**
+**Performans Yorumu:**
 İşletim sistemi düzeyindeki gerçek bellek ölçümleri, iki aracın mimari farkını net bir şekilde ortaya koymaktadır. Pandas, veriyi işleyebilmek için dosyanın tamamını ve oluşturduğu ara objeleri devasa bir blok olarak RAM'e yüklediği için bellek tüketimi 1.1 GB'ın üzerine çıkmıştır. Buna karşın DuckDB, veriyi disk üzerinden vektörel olarak ve bloklar halinde okuyan (out-of-core) optimize bir C++ motoruna sahip olduğundan, aynı işi sadece ~150 MB gerçek bellek harcayarak ve 2.4 kat daha hızlı tamamlamıştır.
 
 ## 4. Sonuç ve Değerlendirme
